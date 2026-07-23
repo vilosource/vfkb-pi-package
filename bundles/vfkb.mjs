@@ -16091,7 +16091,7 @@ import { dirname as dirname5, join as join8 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.6.0" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "6c5ab6d" : "dev";
+var ENGINE_COMMIT = true ? "57d98f0" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -16517,14 +16517,14 @@ function gatherStopContext(cwd = process.cwd(), brain = brainDir()) {
 
 // src/git.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { existsSync as existsSync8 } from "node:fs";
+import { existsSync as existsSync8, realpathSync } from "node:fs";
 import { dirname as dirname6, join as join11 } from "node:path";
 function git(args, cwd) {
   return execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 function insideSurroundingRepo(brain) {
   try {
-    return git(["rev-parse", "--is-inside-work-tree"], dirname6(brain)).trim() === "true";
+    return git(["rev-parse", "--is-inside-work-tree"], dirname6(realpathSync(brain))).trim() === "true";
   } catch {
     return false;
   }
@@ -16542,6 +16542,7 @@ function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
   if (!isStandaloneBrain(brain)) {
     return {
       committed: false,
+      refused: true,
       message: `brain at ${brain} is inside a git worktree \u2014 not committing here (an in-repo brain is committed by the project, via the session-end pathspec commit)`
     };
   }
@@ -16760,7 +16761,7 @@ function settingsHooks(project) {
     SessionEnd: [{ hooks: [{ type: "command", command: hookCommand(project, "session-end") }] }]
   };
 }
-function agentsSnippet(project) {
+function agentsSnippet(project, pi) {
   return `${AGENTS_MARKER}
 ## How we track work HERE \u2014 vfkb
 
@@ -16772,16 +16773,19 @@ This repo uses **vfkb** as its knowledge substrate (project \`${project}\`). Kno
   \`decision\`, \`fact\`, \`gotcha\`, \`pattern\`, \`link\` \u2014 put a decision's rationale in its text.
   **Capture load-bearing decisions immediately \u2014 don't defer.**
 - Committed: \`.vfkb/entries.jsonl\`, \`.vfkb/manifest.json\` (the ADR-0030 engine stamp \u2014
-  **never gitignore \`manifest.json\`**), \`.vfkb/bin/\`, and \`.pi/settings.json\`.
+  **never gitignore \`manifest.json\`**), \`.vfkb/bin/\`${pi ? ", and `.pi/settings.json`" : ""}.
   Derived/gitignored: \`.vfkb/index-meta.json\`, \`.vfkb/.sessions/\`, \`.vfkb/.signals/\`,
-  \`.vfkb/.journal/\`, \`.vfkb/.lock\`, and \`.pi/git/\` (pi's package clone).
+  \`.vfkb/.journal/\`, \`.vfkb/.lock\`${pi ? ", and `.pi/git/` (pi's package clone)" : ""}.${pi ? `
 - **Works in [pi](https://pi.dev) too** (ADR-0066): \`.pi/settings.json\` loads the \`vfkb-pi-package\`
   and pi auto-installs it at startup, so a teammate's clone wires itself. The package vendors its
   own engine and finds this brain by itself \u2014 there is **no \`.vfkb/mcp.json\` to write, and its
   absence is normal**. (You may add one to override or add MCP servers; \`vfkb doctor\` validates it
   if present. Do NOT hand-write one pointing at \`.vfkb/bin/bootstrap.mjs\` \u2014 that re-imposes the
   per-machine \`$VFKB_BUNDLE_DIR\` the package exists to retire, and shadows its bundled server.)
-  Run \`vfkb doctor\` to check the wiring.
+  Run \`vfkb doctor\` to check the wiring.` : `
+- **This repo was wired for Claude Code only** (\`vfkb init --no-pi\`). If a \`.pi/settings.json\`
+  exists, the pi face was added later and IS in use \u2014 commit that file; this paragraph is not
+  updated on a re-init, because the snippet is written once.`}
 
 Two env vars: **\`VFKB_DATA_DIR\`** = this repo's brain (\`.vfkb\`, set by the wiring) \xB7 **\`VFKB_BUNDLE_DIR\`**
 = the shared vfkb engine bundles \u2014 set it once per machine, e.g. \`export VFKB_BUNDLE_DIR=/path/to/vfkb/dist/bundles\`.
@@ -16956,7 +16960,7 @@ ${line}
       changes.push({ path: "AGENTS.md", action: "skipped" });
     } else {
       const sep2 = cur && !cur.endsWith("\n") ? "\n\n" : cur ? "\n" : "";
-      writeFileSync5(path, cur + sep2 + agentsSnippet(project));
+      writeFileSync5(path, cur + sep2 + agentsSnippet(project, opts.pi !== false));
       changes.push({ path: "AGENTS.md", action: existed ? "updated" : "created" });
     }
   }
@@ -16977,7 +16981,7 @@ function approvalNotice(project) {
 // src/doctor.ts
 import { execFileSync as execFileSync6 } from "node:child_process";
 import { randomBytes as randomBytes3 } from "node:crypto";
-import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8, realpathSync, unlinkSync as unlinkSync2 } from "node:fs";
+import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8, realpathSync as realpathSync2, unlinkSync as unlinkSync2 } from "node:fs";
 import { join as join14, dirname as dirname7, relative as relative3, resolve as resolve4, isAbsolute as isAbsolute2 } from "node:path";
 function readJson2(path) {
   if (!existsSync10(path)) return void 0;
@@ -17198,7 +17202,7 @@ function isUnder(parent, child) {
   if (!parent) return false;
   const real = (p) => {
     try {
-      return realpathSync(p);
+      return realpathSync2(p);
     } catch {
       return resolve4(p);
     }
@@ -17443,6 +17447,26 @@ function runDoctor(opts) {
     add("VFKB_PROJECT", "fail", `mismatch: .mcp.json says "${mcpProject}", settings says "${settingsProject}"`);
   } else if (mcpProject || settingsProject) {
     add("VFKB_PROJECT", "ok", `${mcpProject ?? settingsProject}`);
+  }
+  {
+    const embedded = join14(brainDir2, ".git");
+    const inRepo = isUnder(repoToplevel(root), brainDir2);
+    if (inRepo && existsSync10(embedded)) {
+      const rel = relative3(root, join14(brainDir2, "entries.jsonl"));
+      let trackedByProject = false;
+      try {
+        trackedByProject = realGit2(["log", "--oneline", "-1", "--", rel], root).trim().length > 0 || realGit2(["ls-files", "--", rel], root).trim().length > 0;
+      } catch {
+        trackedByProject = false;
+      }
+      if (trackedByProject) {
+        add(
+          "brain gitlink",
+          "fail",
+          `${embedded} exists and this project tracks ${rel} \u2014 the brain is now an EMBEDDED git repo, so \`git add ${rel}\` silently tracks NOTHING and new entries are no longer reaching the project's history. Fix: remove ${embedded} (an older build created it; the project's own history of this brain is intact), then re-add the file`
+        );
+      }
+    }
   }
   {
     const piSettingsPath = join14(root, ".pi", "settings.json");
@@ -18189,6 +18213,17 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
   if (cmd === "save") {
     const p = parseArgs("save", argsOf(sub, rest), {});
     const r = save(p.positionals.join(" ").trim() || void 0);
+    if (r.refused) {
+      const rel = process.env.VFKB_DATA_DIR || ".vfkb";
+      process.stdout.write(
+        `not committed: ${r.message}
+  this brain ships INSIDE your project (ADR-0019), so commit it there:
+      git add ${rel}/entries.jsonl && git commit -m "vfkb: update"
+  (a Claude Code session does this for you at session end \u2014 ADR-0033)
+`
+      );
+      return;
+    }
     process.stdout.write((r.committed ? "committed: " : "no-op: ") + r.message + "\n");
     return;
   }

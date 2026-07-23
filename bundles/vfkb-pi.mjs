@@ -15435,14 +15435,14 @@ var GATING_REASON = "vfkb: edit the brain via the engine/CLI/MCP, not by writing
 
 // src/git.ts
 import { execFileSync } from "node:child_process";
-import { existsSync as existsSync5 } from "node:fs";
+import { existsSync as existsSync5, realpathSync } from "node:fs";
 import { dirname as dirname4, join as join7 } from "node:path";
 function git(args, cwd) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 function insideSurroundingRepo(brain) {
   try {
-    return git(["rev-parse", "--is-inside-work-tree"], dirname4(brain)).trim() === "true";
+    return git(["rev-parse", "--is-inside-work-tree"], dirname4(realpathSync(brain))).trim() === "true";
   } catch {
     return false;
   }
@@ -15460,6 +15460,7 @@ function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
   if (!isStandaloneBrain(brain)) {
     return {
       committed: false,
+      refused: true,
       message: `brain at ${brain} is inside a git worktree \u2014 not committing here (an in-repo brain is committed by the project, via the session-end pathspec commit)`
     };
   }
