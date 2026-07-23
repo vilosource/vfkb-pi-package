@@ -22,7 +22,7 @@
 //   2. <repo>/.vfkb/mcp.json      — an explicit consumer override, if they wrote one
 //   3. this package's own bundle  — the normal case: zero config, no env var needed
 
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, openSync, writeSync, closeSync, fchmodSync, constants } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -115,13 +115,27 @@ export default function (pi) {
       },
     },
   };
+  // O_NOFOLLOW + an explicit fchmod, NOT writeFileSync(path, …, {mode}).
+  //
+  // `{mode}` applies only when the file is CREATED, and the write follows a symlink —
+  // the identical semantics that made the previous /tmp design exploitable. The residual
+  // risk here is much lower (the brain dir is user-owned, not a shared namespace), but
+  // this file's `command`/`args` are SPAWNED BY pi, so it is worth closing properly on a
+  // group-writable checkout: O_NOFOLLOW makes open fail rather than traverse a planted
+  // symlink, and fchmod pins 0600 on a pre-existing file instead of trusting creation.
   const path = join(brain, '.pi-mcp.json');
+  let fd;
   try {
-    writeFileSync(path, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+    fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+    fchmodSync(fd, 0o600);
+    writeSync(fd, JSON.stringify(cfg, null, 2));
   } catch (e) {
-    // Unwritable brain dir: say so rather than leave the bridge mysteriously toolless.
+    // ELOOP = the path is a symlink; anything else = unwritable. Either way, say so
+    // rather than leave the bridge mysteriously toolless.
     process.stderr.write(`vfkb: could not write the MCP config at ${path} (${e.message}) — kb_* tools unavailable.\n`);
     return;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
   process.env.VFKB_MCP_CONFIG = path;
 }

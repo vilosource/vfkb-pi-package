@@ -13,7 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, renameSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, renameSync, chmodSync, statSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -139,6 +139,39 @@ test('the config is written INSIDE the brain, not a predictable /tmp path', () =
     // assertion — "inside the user-owned brain dir, not a shared namespace" is.)
     assert.ok(!/vfkb-pi-[0-9a-f]{16}/.test(r.cfgPath), 'must not use the guessable shared-/tmp path');
     assert.ok(r.cfgPath.startsWith(join(root, '.vfkb')), 'must live inside the brain dir');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the config is 0600 even when the file ALREADY exists', () => {
+  // writeFileSync(path, …, {mode}) applies the mode only at CREATION, so a
+  // pre-existing world-readable file kept its mode. pi spawns command+args out of this
+  // file, so the permission has to be pinned on every write, not just the first.
+  const root = project();
+  try {
+    const p = join(root, '.vfkb', '.pi-mcp.json');
+    writeFileSync(p, 'stale', { mode: 0o666 });
+    chmodSync(p, 0o666);
+    run({ cwd: root });
+    assert.equal(statSync(p).mode & 0o777, 0o600, 'mode must be pinned on an existing file');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a symlinked config path is REFUSED, not followed', () => {
+  // The arbitrary-overwrite primitive: without O_NOFOLLOW the write traverses a planted
+  // symlink and clobbers whatever it points at, as the victim.
+  const root = project();
+  const victim = join(root, 'victim.txt');
+  try {
+    writeFileSync(victim, 'ORIGINAL');
+    symlinkSync(victim, join(root, '.vfkb', '.pi-mcp.json'));
+    const r = run({ cwd: root });
+    assert.equal(readFileSync(victim, 'utf8'), 'ORIGINAL', 'must NOT follow the symlink');
+    assert.match(r.stderr, /could not write the MCP config/, 'and must say so');
+    assert.equal(r.cfgPath, null, 'and must not point the bridge at it');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

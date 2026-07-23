@@ -16091,7 +16091,7 @@ import { dirname as dirname5, join as join8 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.6.0" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "a35d97c" : "dev";
+var ENGINE_COMMIT = true ? "6c5ab6d" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -16518,9 +16518,20 @@ function gatherStopContext(cwd = process.cwd(), brain = brainDir()) {
 // src/git.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
 import { existsSync as existsSync8 } from "node:fs";
-import { join as join11 } from "node:path";
+import { dirname as dirname6, join as join11 } from "node:path";
 function git(args, cwd) {
   return execFileSync4("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+function insideSurroundingRepo(brain) {
+  try {
+    return git(["rev-parse", "--is-inside-work-tree"], dirname6(brain)).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+function isStandaloneBrain(brain) {
+  if (existsSync8(join11(brain, ".git"))) return true;
+  return !insideSurroundingRepo(brain);
 }
 function ensureRepo(brain) {
   if (!existsSync8(join11(brain, ".git"))) {
@@ -16528,6 +16539,12 @@ function ensureRepo(brain) {
   }
 }
 function save(message = "vfkb: update", role = "engine", brain = brainDir()) {
+  if (!isStandaloneBrain(brain)) {
+    return {
+      committed: false,
+      message: `brain at ${brain} is inside a git worktree \u2014 not committing here (an in-repo brain is committed by the project, via the session-end pathspec commit)`
+    };
+  }
   ensureRepo(brain);
   git(["add", "-A"], brain);
   const status = git(["status", "--porcelain"], brain).trim();
@@ -16961,7 +16978,7 @@ function approvalNotice(project) {
 import { execFileSync as execFileSync6 } from "node:child_process";
 import { randomBytes as randomBytes3 } from "node:crypto";
 import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8, realpathSync, unlinkSync as unlinkSync2 } from "node:fs";
-import { join as join14, dirname as dirname6, relative as relative3, resolve as resolve4, isAbsolute as isAbsolute2 } from "node:path";
+import { join as join14, dirname as dirname7, relative as relative3, resolve as resolve4, isAbsolute as isAbsolute2 } from "node:path";
 function readJson2(path) {
   if (!existsSync10(path)) return void 0;
   try {
@@ -17078,7 +17095,7 @@ function readNpmCache(path) {
 }
 function writeNpmCache(path, entry) {
   try {
-    mkdirSync8(dirname6(path), { recursive: true });
+    mkdirSync8(dirname7(path), { recursive: true });
     writeFileSync6(path, JSON.stringify(entry));
   } catch {
   }
@@ -17600,10 +17617,10 @@ var DECISION_STATUSES = ["proposed", "accepted", "deprecated", "superseded"];
 // src/cli.ts
 import { readFileSync as readFileSync13 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { dirname as dirname7, join as join16 } from "node:path";
+import { dirname as dirname8, join as join16 } from "node:path";
 function packageVersion() {
   try {
-    const here = dirname7(fileURLToPath2(import.meta.url));
+    const here = dirname8(fileURLToPath2(import.meta.url));
     const pkg = JSON.parse(readFileSync13(join16(here, "..", "package.json"), "utf8"));
     return pkg.version || ENGINE_VERSION;
   } catch {
