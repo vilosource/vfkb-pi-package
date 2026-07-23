@@ -22,7 +22,8 @@
 //   2. <repo>/.vfkb/mcp.json      — an explicit consumer override, if they wrote one
 //   3. this package's own bundle  — the normal case: zero config, no env var needed
 
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -85,8 +86,13 @@ export default function (pi) {
     return;
   }
 
-  // The bridge takes a PATH, so the synthesized config has to live on disk. A temp file
-  // keeps it out of the consumer's repo — it is derived state, not wiring to commit.
+  // The bridge takes a PATH, so the synthesized config has to live on disk. It goes to a
+  // temp dir rather than the repo — derived state, not wiring to commit.
+  //
+  // The path is DETERMINISTIC (a hash of brain + server), not mkdtemp: one directory per
+  // project that is rewritten rather than accumulated. mkdtemp leaked a new directory on
+  // every pi start, growing without bound. Rewriting is safe under concurrent sessions
+  // because the content is a pure function of the same two inputs.
   const cfg = {
     mcpServers: {
       vfkb: {
@@ -96,8 +102,16 @@ export default function (pi) {
       },
     },
   };
-  const dir = mkdtempSync(join(tmpdir(), 'vfkb-pi-'));
+  const key = createHash('sha256').update(brain).update('\0').update(server).digest('hex').slice(0, 16);
+  const dir = join(tmpdir(), `vfkb-pi-${key}`);
   const path = join(dir, 'mcp.json');
-  writeFileSync(path, JSON.stringify(cfg, null, 2));
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(path, JSON.stringify(cfg, null, 2));
+  } catch (e) {
+    // Unwritable temp dir: say so rather than leave the bridge mysteriously toolless.
+    process.stderr.write(`vfkb: could not write the MCP config at ${path} (${e.message}) — kb_* tools unavailable.\n`);
+    return;
+  }
   process.env.VFKB_MCP_CONFIG = path;
 }
