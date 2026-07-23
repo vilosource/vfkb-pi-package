@@ -16091,7 +16091,7 @@ import { dirname as dirname5, join as join8 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.6.0" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "f0169d7" : "dev";
+var ENGINE_COMMIT = true ? "a35d97c" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -16860,6 +16860,8 @@ function initProject(root, opts = {}) {
       ".vfkb/.journal/",
       ".vfkb/.lock",
       ".vfkb/.write-probe-*",
+      // Derived per-machine MCP config the pi package writes (absolute paths inside).
+      ".vfkb/.pi-mcp.json",
       // pi clones the vfkb package (plus its node_modules) into the PROJECT when the
       // package entry is project-scoped. Derived, multi-hundred-KB, and re-fetched on
       // demand — never commit it. Without this line a consumer's `git status` fills
@@ -16911,7 +16913,7 @@ ${line}
       changes.push({ path: ".gitattributes", action: existed ? "updated" : "created" });
     }
   }
-  {
+  if (opts.pi !== false) {
     const dir = join13(root, ".pi");
     const path = join13(dir, "settings.json");
     const existed = existsSync9(path);
@@ -17213,10 +17215,15 @@ function checkPiWiring(piSettings, piMcp, piSettingsExists, piMcpExists, pluginW
   const listed = piPackageListed(piSettings);
   const hasMcp = !!piMcp?.mcpServers?.vfkb;
   const orderProblem = piExtensionOrderProblem(piSettings);
-  const handWired = Array.isArray(piSettings?.extensions) && piSettings.extensions.length > 0;
+  const exts = Array.isArray(piSettings?.extensions) ? piSettings.extensions : [];
+  const handWired = exts.some((e) => typeof e === "string" && /vfkb/i.test(e));
   const fix = pluginWired ? 'add `.pi/settings.json` (packages: ["' + PI_PACKAGE_SOURCE2 + '"]) and `.vfkb/mcp.json`' : "run `vfkb init`";
-  if (!piSettingsExists && !piMcpExists) {
-    out.push({ name: "pi wiring", status: "skip", detail: "no .pi/settings.json \u2014 pi face not wired (optional)" });
+  if (!listed && !handWired && !piMcpExists && !orderProblem) {
+    out.push({
+      name: "pi wiring",
+      status: "skip",
+      detail: piSettingsExists ? ".pi/settings.json has no vfkb wiring \u2014 pi face not wired (optional)" : "no .pi/settings.json \u2014 pi face not wired (optional)"
+    });
     return out;
   }
   if (listed) {
@@ -17750,11 +17757,11 @@ broadcast: ${results.length - failed}/${results.length} written${failed ? ` \u20
     return;
   }
   if (cmd === "init") {
-    const p = parseArgs("init", argsOf(sub, rest), {});
+    const p = parseArgs("init", argsOf(sub, rest), { "no-pi": "boolean" });
     if (p.positionals.length > 1) throw new UsageError("init: at most one [project] argument");
     const root = process.cwd();
     const project = p.positionals[0] || process.env.VFKB_PROJECT;
-    const changes = initProject(root, { project });
+    const changes = initProject(root, { project, pi: !p.flags.get("no-pi") });
     const resolved = project || root.split(/[/\\]/).filter(Boolean).pop() || "project";
     for (const c of changes) process.stdout.write(`${c.action}	${c.path}
 `);

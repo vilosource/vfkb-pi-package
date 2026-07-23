@@ -22,10 +22,8 @@
 //   2. <repo>/.vfkb/mcp.json      — an explicit consumer override, if they wrote one
 //   3. this package's own bundle  — the normal case: zero config, no env var needed
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -44,7 +42,12 @@ function findBrain(from) {
 }
 
 export default function (pi) {
-  const brain = findBrain(process.cwd());
+  // An explicit outer setting ALWAYS wins, and both spellings count: storage.ts resolves
+  // `VFKB_DATA_DIR || VFKB_DIR || ~/.vfkb`, so honouring only the canonical name silently
+  // discarded a user's (ADR-0032-supported) VFKB_DIR — and would have silently bypassed
+  // the L4 image's own `ENV VFKB_DIR=/brain`, invalidating the very proof this package
+  // needs. Discovery is the FALLBACK, never an override.
+  const brain = process.env.VFKB_DATA_DIR || process.env.VFKB_DIR || findBrain(process.cwd());
   if (!brain) return; // not a vfkb project — leave the bridge inert, correctly
 
   // THE TWO EXTENSIONS MUST AGREE ON THE BRAIN, and they resolve it by different means.
@@ -59,8 +62,11 @@ export default function (pi) {
   // (scenarios/docker/pi.Dockerfile). It appeared the first time the two extensions were
   // co-loaded on a real install — exactly the failure ADR-0066 §4 predicted.
   //
-  // `??=` so an explicit outer VFKB_DATA_DIR always wins (the harness, a power user).
-  process.env.VFKB_DATA_DIR ??= brain;
+  // `brain` already accounts for an outer setting, so this is an assignment, not an
+  // override — and the MCP spec below MUST be built from this same value. Building the
+  // spec from a separately-derived path is how the split brain survived its first fix:
+  // the in-process face used the outer env while the MCP face used the discovered dir.
+  process.env.VFKB_DATA_DIR = brain;
 
   if (process.env.VFKB_MCP_CONFIG) return; // (1) respect an explicit setting
 
@@ -86,30 +92,34 @@ export default function (pi) {
     return;
   }
 
-  // The bridge takes a PATH, so the synthesized config has to live on disk. It goes to a
-  // temp dir rather than the repo — derived state, not wiring to commit.
+  // The bridge takes a PATH, so the synthesized config must live on disk — and WHERE
+  // matters more than it looks, because pi SPAWNS `command`+`args` out of this file.
   //
-  // The path is DETERMINISTIC (a hash of brain + server), not mkdtemp: one directory per
-  // project that is rewritten rather than accumulated. mkdtemp leaked a new directory on
-  // every pi start, growing without bound. Rewriting is safe under concurrent sessions
-  // because the content is a pure function of the same two inputs.
+  // It lived in /tmp under two designs, both wrong. `mkdtempSync` leaked a directory per
+  // pi start. Replacing it with a deterministic `/tmp/vfkb-pi-<sha>` fixed the leak and
+  // introduced a worse bug: the path became PREDICTABLE, and neither defence held —
+  // `mkdirSync({mode:0o700})` does NOT chmod a directory that already exists (verified),
+  // and `writeFileSync` follows a planted symlink. On a shared /tmp an attacker who can
+  // guess the repo path pre-creates the directory world-writable, then rewrites
+  // mcp.json's `command` — arbitrary code execution as the victim.
+  //
+  // So it goes in the BRAIN DIR: already user-owned, already present, already gitignored
+  // below, and not in a world-writable namespace. Dot-prefixed as derived state.
   const cfg = {
     mcpServers: {
       vfkb: {
         command: process.execPath,
         args: [server],
+        // Same `brain` the in-process face was just pointed at — see above.
         env: { VFKB_DATA_DIR: brain, VFKB_PROJECT: process.env.VFKB_PROJECT || '' },
       },
     },
   };
-  const key = createHash('sha256').update(brain).update('\0').update(server).digest('hex').slice(0, 16);
-  const dir = join(tmpdir(), `vfkb-pi-${key}`);
-  const path = join(dir, 'mcp.json');
+  const path = join(brain, '.pi-mcp.json');
   try {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    writeFileSync(path, JSON.stringify(cfg, null, 2));
+    writeFileSync(path, JSON.stringify(cfg, null, 2), { mode: 0o600 });
   } catch (e) {
-    // Unwritable temp dir: say so rather than leave the bridge mysteriously toolless.
+    // Unwritable brain dir: say so rather than leave the bridge mysteriously toolless.
     process.stderr.write(`vfkb: could not write the MCP config at ${path} (${e.message}) — kb_* tools unavailable.\n`);
     return;
   }

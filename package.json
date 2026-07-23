@@ -32,5 +32,9 @@
     "@mariozechner/pi-coding-agent": {
       "optional": true
     }
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "gate": "node release-gate.mjs"
   }
 }
