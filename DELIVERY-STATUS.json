@@ -1,0 +1,16 @@
+{
+  "$comment": [
+    "Machine-readable delivery-status assertion (vfkb ADR-0051 clause 2).",
+    "DELIVERY is a capability distinct from the capabilities it carries.",
+    "",
+    "UNPROVEN: no scenarios/records/install-path.json exists for this package yet.",
+    "The extensions have been observed working under `pi -e` and under a local",
+    "package install, but ADR-0051 clause 1 is explicit that neither proves DELIVERY:",
+    "a real `pi install git:` into a clean HOME, and an upgrade from an older release,",
+    "have not been demonstrated. Until that record lands, every release note, ADR and",
+    "handoff referencing this package MUST state that delivery is unproven."
+  ],
+  "delivery": "unproven",
+  "proofRecord": null,
+  "disclosure": "delivery is unproven"
+}
