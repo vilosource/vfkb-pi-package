@@ -16091,7 +16091,7 @@ import { dirname as dirname5, join as join8 } from "node:path";
 // src/version.ts
 var SCHEMA_VERSION = 1;
 var ENGINE_VERSION = true ? "0.6.0" : ownPackageVersion();
-var ENGINE_COMMIT = true ? "57d98f0" : "dev";
+var ENGINE_COMMIT = true ? "6bf5fbe" : "dev";
 
 // src/manifest.ts
 function manifestPath(brainDir2) {
@@ -16695,7 +16695,7 @@ function runSessionEnd(opts = {}) {
 
 // src/init.ts
 import { existsSync as existsSync9, mkdirSync as mkdirSync7, readFileSync as readFileSync10, writeFileSync as writeFileSync5 } from "node:fs";
-import { basename as basename3, join as join13 } from "node:path";
+import { basename as basename3, join as join13, relative as relative3 } from "node:path";
 var AGENTS_MARKER = "<!-- vfkb:how-we-track-work -->";
 var BOOTSTRAP_REL = ".vfkb/bin/bootstrap.mjs";
 var PI_PACKAGE_SOURCE = "git:github.com/vilosource/vfkb-pi-package";
@@ -16796,6 +16796,17 @@ function readJson(path) {
   if (!existsSync9(path)) return void 0;
   try {
     return JSON.parse(readFileSync10(path, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function preserveUnparseable(root, path) {
+  if (!existsSync9(path)) return void 0;
+  if (readJson(path) !== void 0) return void 0;
+  const backup = `${path}.corrupt-backup`;
+  try {
+    writeFileSync5(backup, readFileSync10(path, "utf8"));
+    return relative3(root, backup);
   } catch {
     return void 0;
   }
@@ -16938,6 +16949,8 @@ ${line}
     const dir = join13(root, ".pi");
     const path = join13(dir, "settings.json");
     const existed = existsSync9(path);
+    const rescued = preserveUnparseable(root, path);
+    if (rescued) changes.push({ path: rescued, action: "created" });
     const cfg = readJson(path) ?? {};
     const cur = Array.isArray(cfg.packages) ? cfg.packages : [];
     const has = cur.some(
@@ -16982,7 +16995,7 @@ function approvalNotice(project) {
 import { execFileSync as execFileSync6 } from "node:child_process";
 import { randomBytes as randomBytes3 } from "node:crypto";
 import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6, mkdirSync as mkdirSync8, realpathSync as realpathSync2, unlinkSync as unlinkSync2 } from "node:fs";
-import { join as join14, dirname as dirname7, relative as relative3, resolve as resolve4, isAbsolute as isAbsolute2 } from "node:path";
+import { join as join14, dirname as dirname7, relative as relative4, resolve as resolve4, isAbsolute as isAbsolute2 } from "node:path";
 function readJson2(path) {
   if (!existsSync10(path)) return void 0;
   try {
@@ -17207,7 +17220,7 @@ function isUnder(parent, child) {
       return resolve4(p);
     }
   };
-  const rel = relative3(real(parent), real(child));
+  const rel = relative4(real(parent), real(child));
   return rel === "" || !rel.startsWith("..") && !isAbsolute2(rel);
 }
 var PI_PACKAGE_SOURCE2 = "git:github.com/vilosource/vfkb-pi-package";
@@ -17451,19 +17464,43 @@ function runDoctor(opts) {
   {
     const embedded = join14(brainDir2, ".git");
     const inRepo = isUnder(repoToplevel(root), brainDir2);
-    if (inRepo && existsSync10(embedded)) {
-      const rel = relative3(root, join14(brainDir2, "entries.jsonl"));
-      let trackedByProject = false;
-      try {
-        trackedByProject = realGit2(["log", "--oneline", "-1", "--", rel], root).trim().length > 0 || realGit2(["ls-files", "--", rel], root).trim().length > 0;
-      } catch {
-        trackedByProject = false;
-      }
-      if (trackedByProject) {
+    const top = repoToplevel(root);
+    const brainIsRoot = top !== void 0 && resolve4(brainDir2) === resolve4(top);
+    if (inRepo && !brainIsRoot && existsSync10(embedded)) {
+      const rel = relative4(root, join14(brainDir2, "entries.jsonl"));
+      const brainRel = relative4(root, brainDir2);
+      const gitRun = opts.git ?? realGit2;
+      const q = (args) => {
+        try {
+          return gitRun(args, root).trim();
+        } catch {
+          return void 0;
+        }
+      };
+      const degraded = q(["rev-parse", "--git-dir"]) === void 0;
+      const ask = (args) => q(args) ?? "";
+      const isSubmodule = /^160000/m.test(q(["ls-files", "-s", "--", brainRel]) ?? "") && (q(["config", "--file", ".gitmodules", "--get-regexp", "path"]) ?? "").includes(brainRel);
+      const ignored = ask(["check-ignore", "--no-index", "--", brainRel]).length > 0;
+      const inHistory = ask(["log", "--oneline", "-1", "--", rel]).length > 0;
+      const inIndex = ask(["ls-files", "--", rel]).length > 0;
+      if (isSubmodule) {
+      } else if (degraded) {
+        add(
+          "brain gitlink",
+          "skip",
+          `${embedded} exists, but git could not be queried here (lock contention or timeout) \u2014 cannot tell a deliberately standalone brain from one gitlinked out of this project. Re-run when git is idle.`
+        );
+      } else if (!ignored && (inHistory || inIndex)) {
         add(
           "brain gitlink",
           "fail",
-          `${embedded} exists and this project tracks ${rel} \u2014 the brain is now an EMBEDDED git repo, so \`git add ${rel}\` silently tracks NOTHING and new entries are no longer reaching the project's history. Fix: remove ${embedded} (an older build created it; the project's own history of this brain is intact), then re-add the file`
+          `${embedded} exists and this project tracks ${rel} \u2014 the brain is an EMBEDDED git repo, so \`git add ${rel}\` silently tracks NOTHING and new entries stop reaching the project's history. Fix: remove ${embedded}, then re-add the file`
+        );
+      } else if (!ignored) {
+        add(
+          "brain gitlink",
+          "warn",
+          `${embedded} exists inside this project and ${brainRel} is not gitignored. If this brain is meant to ship WITH the repo (ADR-0019, the default), it currently cannot: \`git add ${rel}\` exits 0 and tracks nothing. Fix: remove ${embedded}, then commit ${rel}. If this brain is deliberately standalone, gitignore ${brainRel} to silence this.`
         );
       }
     }
@@ -18214,11 +18251,10 @@ imported ${results.length} entr${results.length === 1 ? "y" : "ies"} (role=impor
     const p = parseArgs("save", argsOf(sub, rest), {});
     const r = save(p.positionals.join(" ").trim() || void 0);
     if (r.refused) {
-      const rel = process.env.VFKB_DATA_DIR || ".vfkb";
       process.stdout.write(
         `not committed: ${r.message}
-  this brain ships INSIDE your project (ADR-0019), so commit it there:
-      git add ${rel}/entries.jsonl && git commit -m "vfkb: update"
+  this brain ships INSIDE a project repo (ADR-0019), so commit it there:
+      git add <brain>/entries.jsonl && git commit -m "vfkb: update"
   (a Claude Code session does this for you at session end \u2014 ADR-0033)
 `
       );
