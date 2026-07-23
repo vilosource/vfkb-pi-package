@@ -43,10 +43,25 @@ function findBrain(from) {
 }
 
 export default function (pi) {
-  if (process.env.VFKB_MCP_CONFIG) return; // (1) respect an explicit setting
-
   const brain = findBrain(process.cwd());
   if (!brain) return; // not a vfkb project — leave the bridge inert, correctly
+
+  // THE TWO EXTENSIONS MUST AGREE ON THE BRAIN, and they resolve it by different means.
+  // The bridge's server gets its brain from the spec below; the injection/capture
+  // extension (vfkb-pi.mjs) runs IN-PROCESS and calls storage.ts's brainDir(), which
+  // reads $VFKB_DATA_DIR and otherwise falls back to ~/.vfkb. Setting only the bridge's
+  // config therefore produced a SPLIT BRAIN: kb_* wrote <repo>/.vfkb while session
+  // injection and Tier-B capture read ~/.vfkb — an empty knowledge map for a repo full
+  // of knowledge, and capture cross-contaminating every project, with nothing erroring.
+  //
+  // Every earlier pi proof masked this because the L4 image sets VFKB_DIR externally
+  // (scenarios/docker/pi.Dockerfile). It appeared the first time the two extensions were
+  // co-loaded on a real install — exactly the failure ADR-0066 §4 predicted.
+  //
+  // `??=` so an explicit outer VFKB_DATA_DIR always wins (the harness, a power user).
+  process.env.VFKB_DATA_DIR ??= brain;
+
+  if (process.env.VFKB_MCP_CONFIG) return; // (1) respect an explicit setting
 
   const override = join(brain, 'mcp.json');
   if (existsSync(override)) {
@@ -57,7 +72,18 @@ export default function (pi) {
   // (3) Point the bridge at the MCP server vendored INSIDE this package. This is what
   // makes `pi install` self-sufficient: no $VFKB_BUNDLE_DIR, no consumer file.
   const server = join(HERE, '..', 'bundles', 'vfkb-mcp.mjs');
-  if (!existsSync(server)) return; // a broken/partial install: stay silent, break nothing
+  if (!existsSync(server)) {
+    // A partial/corrupt install. Staying silent here would BE the silent partial install
+    // this file exists to prevent: pi would start, injection would work, and the agent
+    // would simply have no kb_* tools — exit 0, no error, capability absent, which is
+    // the quiet-success shape vfkb ADR-0051 clause 3 forbids. The bridge itself already
+    // warns on a failed connect, so a warning here is the consistent behaviour.
+    process.stderr.write(
+      `vfkb: MCP server missing at ${server} — the kb_* tools will NOT be available. ` +
+        'Reinstall the package (`pi install git:github.com/vilosource/vfkb-pi-package`).\n',
+    );
+    return;
+  }
 
   // The bridge takes a PATH, so the synthesized config has to live on disk. A temp file
   // keeps it out of the consumer's repo — it is derived state, not wiring to commit.

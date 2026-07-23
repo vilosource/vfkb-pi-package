@@ -1,0 +1,15 @@
+name: release-gate
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      # The ADR-0051 clause 2 Brake: delivery status must match the evidence, the
+      # manifest order must keep the resolver ahead of the bridge, and every declared
+      # extension must be in the tree. Prose without this gate gets skipped.
+      - run: node release-gate.mjs
