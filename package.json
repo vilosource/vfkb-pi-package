@@ -2,7 +2,7 @@
   "name": "vfkb-pi-package",
   "version": "0.1.0",
   "type": "module",
-  "description": "ViloForge KnowledgeBase (vfkb) for the pi coding agent — per-project memory: session-start injection, per-turn delta, tool capture, brain-write gating, and the kb_* MCP tools.",
+  "description": "ViloForge KnowledgeBase (vfkb) for the pi coding agent \u2014 per-project memory: session-start injection, per-turn delta, tool capture, brain-write gating, and the kb_* MCP tools.",
   "keywords": [
     "pi-package",
     "extension",
@@ -17,7 +17,6 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/00-vfkb-config.js",
       "./bundles/vfkb-pi.mjs",
       "./bundles/vfkb-pi-bridge.mjs"
     ]
