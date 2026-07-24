@@ -26,6 +26,88 @@ const status = read('DELIVERY-STATUS.json');
 const pkg = read('package.json');
 const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
 
+// ---------------------------------------------------------------------------
+// ADR-0022:72 recomputed. Ported verbatim in behaviour from vfkb-claude-plugin's
+// release-gate.mjs so the two gates cannot drift — a record is DEMONSTRATED when
+// every positive arm hits and no contrast arm leaks, derived from the per-trial
+// observations. It NEVER reads a `verdict` / `demonstrated` / `passed` field.
+//
+// This replaced a check that did exactly that (`r.verdict !== 'DEMONSTRATED'`),
+// which a three-line hand-written file satisfied — while this file's own header
+// claimed "the verdict is DERIVED from the evidence … editing it by hand goes
+// red". That claim was false, and it mattered most precisely at publish, which is
+// the moment `delivery` flips to `proven`. A Brake that can be waved through is
+// prose (vfkb ADR-0050).
+// ---------------------------------------------------------------------------
+const MIN_TRIALS = 3;
+
+const threshold = (role, trials) =>
+  role === 'positive'
+    ? { min: Math.ceil((2 * trials) / 3) }
+    : { max: Math.floor(trials / 3) };
+
+/** Trials in an arm satisfying EVERY observed predicate. */
+const hits = (arm) => arm.trials.filter((t) => arm.predicate.every((p) => t[p] === true)).length;
+
+/** Recompute a record's verdict from its observations. { ok, reasons }. */
+export function verdict(rec) {
+  const reasons = [];
+  if (rec.recordVersion !== 2) {
+    reasons.push(
+      `record declares recordVersion ${JSON.stringify(rec.recordVersion)}; this gate reads v2 ` +
+        `(per-arm {role, predicate, trials[]}) so the verdict can be recomputed`,
+    );
+    return { ok: false, reasons };
+  }
+  if (!Number.isInteger(rec.trials) || rec.trials < MIN_TRIALS) {
+    reasons.push(`record declares trials=${rec.trials}; ADR-0022 §5 requires N>=${MIN_TRIALS}`);
+  }
+  const arms = Object.entries(rec.arms ?? {});
+  if (arms.length === 0) reasons.push('record declares no arms');
+  let sawPositive = false;
+  let sawContrast = false;
+
+  for (const [name, arm] of arms) {
+    if (!['positive', 'contrast'].includes(arm.role)) {
+      reasons.push(`arm "${name}" has unknown role ${JSON.stringify(arm.role)}`);
+      continue;
+    }
+    if (!Array.isArray(arm.predicate) || arm.predicate.length === 0) {
+      reasons.push(`arm "${name}" declares no predicate — nothing to observe`);
+      continue;
+    }
+    if (!Array.isArray(arm.trials) || arm.trials.length !== rec.trials) {
+      reasons.push(`arm "${name}" carries ${arm.trials?.length ?? 0} trials but the record declares ${rec.trials}`);
+      continue;
+    }
+    // Anti-vacuity: a predicate naming a field no trial carries scores 0 hits on
+    // every trial, so a contrast arm that leaked on all three still "holds" —
+    // the proof failing to be able to fail, on its own terms (ADR-0029).
+    const missing = arm.predicate.filter((p) => arm.trials.some((t) => typeof t[p] !== 'boolean'));
+    if (missing.length) {
+      reasons.push(
+        `arm "${name}" scores on [${missing}], which is not a boolean on every trial — ` +
+          `the predicate cannot be evaluated, so the arm would pass vacuously`,
+      );
+      continue;
+    }
+    const n = hits(arm);
+    const t = threshold(arm.role, rec.trials);
+    if (arm.role === 'positive') {
+      sawPositive = true;
+      if (n < t.min) reasons.push(`positive arm "${name}" hit ${n}/${rec.trials} on [${arm.predicate}], needs >=${t.min}`);
+    } else {
+      sawContrast = true;
+      if (n > t.max) reasons.push(`contrast arm "${name}" leaked ${n}/${rec.trials} on [${arm.predicate}], allows <=${t.max}`);
+    }
+  }
+  // A proof that cannot fail proves nothing (ADR-0029).
+  if (arms.length && !sawPositive) reasons.push('record has no positive arm');
+  if (arms.length && !sawContrast) reasons.push('record has no contrast arm — the proof cannot fail');
+
+  return { ok: reasons.length === 0, reasons };
+}
+
 if (status.delivery === 'unproven') {
   if (!/delivery is unproven/i.test(readme)) {
     problems.push('DELIVERY-STATUS says "unproven" but README.md does not carry the disclosure "delivery is unproven"');
@@ -43,8 +125,10 @@ if (status.delivery === 'unproven') {
       problems.push(`DELIVERY-STATUS claims proof "${rec}" but ${path} does not exist`);
     } else {
       const r = read(path);
-      if (r.verdict !== 'DEMONSTRATED') {
-        problems.push(`${path} verdict is "${r.verdict}", not DEMONSTRATED`);
+      // DERIVED, never read. See verdict() above for why this is not `r.verdict`.
+      const v = verdict(r);
+      if (!v.ok) {
+        for (const reason of v.reasons) problems.push(`${path}: ${reason}`);
       }
       // Version-bound: a release that ships new bytes without re-pinning its proof is
       // claiming evidence it does not have. This is what flips the status back.
