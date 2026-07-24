@@ -124,6 +124,16 @@ if (status.delivery === 'unproven') {
     if (!existsSync(join(ROOT, path))) {
       problems.push(`DELIVERY-STATUS claims proof "${rec}" but ${path} does not exist`);
     } else {
+      // A proven release must not still carry the unproven banner. The gate
+      // enforced the disclosure's PRESENCE while unproven but never its ABSENCE
+      // once proven, so a proven release could ship a README contradicting its own
+      // status — the disclosure rule half-applied.
+      if (/delivery is unproven/i.test(readme)) {
+        problems.push(
+          'DELIVERY-STATUS says "proven" but README.md still carries the "delivery is unproven" ' +
+            'disclosure — update the README, or the release ships contradicting itself',
+        );
+      }
       const r = read(path);
       // DERIVED, never read. See verdict() above for why this is not `r.verdict`.
       const v = verdict(r);

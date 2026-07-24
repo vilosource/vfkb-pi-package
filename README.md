@@ -9,20 +9,28 @@ The pi counterpart of
 [vfkb-claude-plugin](https://github.com/vilosource/vfkb-claude-plugin). Same engine,
 different harness face (vfkb ADR-0015).
 
-> ## ⚠️ Delivery is unproven
+> ## ✅ Delivery is proven (2026-07-24, v0.1.0)
 >
-> The extensions have been observed working — under `pi -e`, and under a local
-> `pi install` where a real agent used `kb_add` to write to the brain while a
-> wrapper-less contrast arm wrote nothing. **That is capability, not delivery.**
+> `scenarios/install-path.mjs` DEMONSTRATED it **3/3**. A real `deepseek-v4-pro` agent
+> installed this package through `pi install git:` into a clean `HOME` and used `kb_add`
+> to write to the project brain; the **upgrade** arm observed the capability ABSENT on a
+> pre-capability baseline and PRESENT after remove+reinstall; the **can-fail contrast**
+> arm — `vfkb init`'s AGENTS.md cold floor with the package absent — wrote nothing 3/3.
 >
-> No `scenarios/records/install-path.json` exists yet: a real `pi install git:` into
-> a clean `HOME`, and an upgrade from an older release, have **not** been
-> demonstrated. Per vfkb ADR-0051 clause 1, `-e <path>` and a local-path install both
-> bypass the resolution this package would really be delivered through, so neither
-> can stand in for that proof.
+> The committed `scenarios/records/install-path.json` is what flips
+> `DELIVERY-STATUS.json` to `proven`, and the gate **derives** that by recomputing the
+> verdict from per-trial observations — it never reads a verdict field.
 >
-> Until that record lands, this notice stays, and so does
-> `DELIVERY-STATUS.json: "delivery": "unproven"`.
+> **Scope, stated rather than implied.** The upgrade arm proves a **remove+reinstall**
+> delivers the new capability. It does **not** claim `pi update` would: pi clones to a
+> path keyed by repo, not ref, so neither `pi install <other-ref>` nor `pi update` moves
+> an existing clone — both print success and change nothing. If you pin a ref, you are
+> pinned until you `pi remove` first. The upgrade baseline is a real tree exercised
+> through the real install path, but its provenance is **constructed** (this package has
+> never shipped a prior release), and the record says so.
+>
+> Staying proven is per-release work: the record is version-bound, so a release that
+> ships without re-running the proof reverts the gate to `unproven`.
 
 ## Install
 

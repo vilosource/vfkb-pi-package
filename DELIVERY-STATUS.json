@@ -1,16 +1,18 @@
 {
   "$comment": [
-    "Machine-readable delivery-status assertion (vfkb ADR-0051 clause 2).",
-    "DELIVERY is a capability distinct from the capabilities it carries.",
+    "PROVEN 2026-07-24: scenarios/records/install-path.json is DEMONSTRATED 3/3 and",
+    "version-bound to this package.json version. A real deepseek-v4-pro agent installed the",
+    "package through pi install git: into a clean HOME and used kb_add to write to the brain;",
+    "the upgrade arm observed the capability ABSENT on the pre-capability baseline and PRESENT",
+    "after remove+reinstall; the can-fail contrast arm (AGENTS.md cold floor, package absent)",
+    "wrote nothing 3/3.",
     "",
-    "UNPROVEN: no scenarios/records/install-path.json exists for this package yet.",
-    "The extensions have been observed working under `pi -e` and under a local",
-    "package install, but ADR-0051 clause 1 is explicit that neither proves DELIVERY:",
-    "a real `pi install git:` into a clean HOME, and an upgrade from an older release,",
-    "have not been demonstrated. Until that record lands, every release note, ADR and",
-    "handoff referencing this package MUST state that delivery is unproven."
+    "The gate DERIVES this status by recomputing the verdict from per-trial observations \u2014",
+    "it never reads a verdict field. Editing this by hand goes red.",
+    "",
+    "SCOPE, stated: the upgrade arm proves REMOVE+REINSTALL delivers the new capability. It",
+    "does NOT claim pi update would \u2014 pi does not re-resolve a ref (vfkb gotcha 7bbdf89f39f7)."
   ],
-  "delivery": "unproven",
-  "proofRecord": null,
-  "disclosure": "delivery is unproven"
+  "delivery": "proven",
+  "proofRecord": "install-path"
 }
