@@ -1,0 +1,83 @@
+{
+  "scenario": "install-path",
+  "recordVersion": 2,
+  "packageVersion": "0.1.0",
+  "outerModel": "deepseek-v4-pro",
+  "trials": 3,
+  "generated": "2026-07-24T13:50:08.068Z",
+  "source": "git:github.com/vilosource/vfkb-pi-package",
+  "upgradeFrom": "git:github.com/vilosource/vfkb-pi-package@baseline/pre-capability",
+  "upgradeBaselineIsConstructed": true,
+  "upgradeMechanism": "pi remove + pi install (pi update does not re-resolve a ref)",
+  "toolset": "read,mcp__vfkb__kb_add,mcp__vfkb__kb_search",
+  "arms": {
+    "fresh": {
+      "role": "positive",
+      "predicate": [
+        "toolsBridged",
+        "sentinelWritten"
+      ],
+      "trials": [
+        {
+          "toolsBridged": true,
+          "sentinelWritten": true,
+          "out": "Done. vfkb MCP server up (v0.6.0, brain: /tmp/vfkb-ip-proj-fresh1-NEK5EY/.vfkb) vfkb-pi-bridge: bridged 'vfkb'"
+        },
+        {
+          "toolsBridged": true,
+          "sentinelWritten": true,
+          "out": "Done. vfkb MCP server up (v0.6.0, brain: /tmp/vfkb-ip-proj-fresh2-UbYGp3/.vfkb) vfkb-pi-bridge: bridged 'vfkb'"
+        },
+        {
+          "toolsBridged": true,
+          "sentinelWritten": true,
+          "out": "Done. vfkb MCP server up (v0.6.0, brain: /tmp/vfkb-ip-proj-fresh3-teoc9u/.vfkb) vfkb-pi-bridge: bridged 'vfkb'"
+        }
+      ]
+    },
+    "upgrade": {
+      "role": "positive",
+      "predicate": [
+        "absentBefore",
+        "presentAfter"
+      ],
+      "trials": [
+        {
+          "absentBefore": true,
+          "presentAfter": true,
+          "out": "Done. vfkb MCP server up (v0.6.0, brain: /tmp/vfkb-ip-proj-upg1-YpmZPu/.vfkb) vfkb-pi-bridge: bridged 'vfkb' ("
+        },
+        {
+          "absentBefore": true,
+          "presentAfter": true,
+          "out": "Done. vfkb MCP server up (v0.6.0, brain: /tmp/vfkb-ip-proj-upg2-1u0E8w/.vfkb) vfkb-pi-bridge: bridged 'vfkb' ("
+        },
+        {
+          "absentBefore": true,
+          "presentAfter": true,
+          "out": "Done. vfkb MCP server up (v0.6.0, brain: /tmp/vfkb-ip-proj-upg3-hj0NeJ/.vfkb) vfkb-pi-bridge: bridged 'vfkb' ("
+        }
+      ]
+    },
+    "contrast": {
+      "role": "contrast",
+      "predicate": [
+        "sentinelWritten"
+      ],
+      "trials": [
+        {
+          "sentinelWritten": false,
+          "out": "I don't have access to the `kb_add` tool in my current tool set — only `read` is available. The MCP-based `mcp"
+        },
+        {
+          "sentinelWritten": false,
+          "out": "Unfortunately, I cannot fulfill this request. The only tool currently available to me is `read` — I don't have"
+        },
+        {
+          "sentinelWritten": false,
+          "out": "I'm unable to complete this request. The `mcp__vfkb__kb_add` tool isn't available in this session, and I only "
+        }
+      ]
+    }
+  }
+}
